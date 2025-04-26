@@ -1,0 +1,7 @@
+dain lahacks stuff
+
+
+idea:
+- feed in sentenced data into dain and then send it email feedback on how to do 
+- add seperate page for dain, can add seperate page to website instead of insights
+-> given prompt, return ui, see docs for more

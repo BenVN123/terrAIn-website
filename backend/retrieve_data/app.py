@@ -4,11 +4,12 @@
 import os
 import json
 from datetime import datetime
-from flask import Flask, jsonify, request as flask_request, render_template, send_from_directory
+from flask import Flask, jsonify, request, render_template, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from data_retriever import DynamoDBRetriever
 from mqtt_stream import MQTTHandler, DecimalEncoder
+from ai_insights.gemini import GeminiDatabaseInsights
 
 
 app = Flask(__name__, static_folder='static')
@@ -20,6 +21,9 @@ retriever = DynamoDBRetriever()
 
 # Initialize and start the MQTT handler
 mqtt_handler = MQTTHandler(socketio)
+
+# Initialize the Gemini insights engine
+gemini_insights = GeminiDatabaseInsights()
 
 
 @app.route('/')
@@ -55,6 +59,49 @@ def index():
                         "name": "nodes",
                         "type": "string",
                         "description": "Comma-separated list of node IDs",
+                        "optional": True
+                    }
+                ]
+            },
+            {
+                "path": "/api/call_llm",
+                "method": "GET",
+                "description": "Generate agricultural insights using LLM",
+                "query_params": [
+                    {
+                        "name": "prompt_type",
+                        "type": "string",
+                        "description": "Type of prompt to use (small, large, or custom)",
+                        "default": "small"
+                    },
+                    {
+                        "name": "n_readings",
+                        "type": "integer",
+                        "description": "Number of readings to analyze (for small prompt)",
+                        "default": 10
+                    },
+                    {
+                        "name": "custom_prompt",
+                        "type": "string",
+                        "description": "Custom prompt text (for custom prompt type)",
+                        "optional": True
+                    },
+                    {
+                        "name": "include_weather",
+                        "type": "boolean",
+                        "description": "Whether to include weather forecast data",
+                        "default": False
+                    },
+                    {
+                        "name": "lat",
+                        "type": "float",
+                        "description": "Latitude for weather data (required if include_weather=True)",
+                        "optional": True
+                    },
+                    {
+                        "name": "lon",
+                        "type": "float",
+                        "description": "Longitude for weather data (required if include_weather=True)",
                         "optional": True
                     }
                 ]
@@ -122,6 +169,73 @@ def get_readings():
     return jsonify(readings)
 
 
+@app.route('/api/call_llm', methods=['GET'])
+def call_llm():
+    """
+    Generate agricultural insights using Gemini LLM.
+    
+    Query parameters:
+    - prompt_type: Type of prompt to use (small, large, or custom) (default: small)
+    - n_readings: Number of readings to analyze (for small prompt) (default: 10)
+    - custom_prompt: Custom prompt text (for custom prompt type) (optional)
+    - include_weather: Whether to include weather forecast data (default: False)
+    - lat: Latitude for weather data (required if include_weather=True) (optional)
+    - lon: Longitude for weather data (required if include_weather=True) (optional)
+    """
+    # Get query parameters
+    prompt_type = request.args.get('prompt_type', default='small', type=str)
+    n_readings = request.args.get('n_readings', default=10, type=int)
+    custom_prompt = request.args.get('custom_prompt', default=None, type=str)
+    include_weather = request.args.get('include_weather', default=False, type=bool)
+    lat = request.args.get('lat', default=None, type=float)
+    lon = request.args.get('lon', default=None, type=float)
+    
+    # Get data for context
+    data = gemini_insights.extract_data_for_analysis()
+    context = gemini_insights.generate_data_summary(data)
+    
+    # Get weather data if requested
+    weather_data = None
+    if include_weather and lat is not None and lon is not None:
+        try:
+            weather_data = gemini_insights.extract_weather(lat, lon)
+        except Exception as e:
+            return jsonify({"error": f"Failed to get weather data: {str(e)}"}), 500
+    
+    # Generate insights based on prompt type
+    try:
+        if prompt_type == 'small':
+            insights = gemini_insights.get_farm_assistant_advice(
+                n_readings=n_readings,
+                context=context,
+                weather_data=weather_data
+            )
+        elif prompt_type == 'large':
+            insights = gemini_insights.get_detailed_agriculture_plan(
+                context=context,
+                weather_data=weather_data
+            )
+        elif prompt_type == 'custom':
+            if not custom_prompt:
+                return jsonify({"error": "Custom prompt required for prompt_type 'custom'"}), 400
+            insights = gemini_insights.query_gemini(
+                prompt=custom_prompt,
+                context=context
+            )
+        else:
+            return jsonify({"error": f"Invalid prompt_type: {prompt_type}"}), 400
+        
+        # Return the insights
+        return jsonify({
+            "insights": insights,
+            "prompt_type": prompt_type,
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate insights: {str(e)}"}), 500
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
@@ -131,7 +245,7 @@ def health_check():
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection."""
-    sid = flask_request.sid if hasattr(flask_request, 'sid') else 'unknown'
+    sid = request.sid if hasattr(request, 'sid') else 'unknown'
     print(f'Client connected: {sid}')
     # Emit test data to verify connection
     test_data = {
@@ -149,7 +263,7 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     """Handle WebSocket disconnection."""
-    sid = flask_request.sid if hasattr(flask_request, 'sid') else 'unknown'
+    sid = request.sid if hasattr(request, 'sid') else 'unknown'
     print(f'Client disconnected: {sid}')
 
 

@@ -1,21 +1,25 @@
 import os
 import sys
-sys.path.append(os.path.abspath('../retrieve_data'))
+# sys.path.append(os.path.abspath('../retrieve_data'))
 
 import json
 import boto3
 from datetime import datetime, timedelta
 import pandas as pd
 from google import genai
+from dotenv import load_dotenv
+import requests
+
 from data_retriever import DynamoDBRetriever
+from prompts import small_prompt, large_prompt
 
 class GeminiDatabaseInsights:
-    def __init__(self, api_key=None):
+    def __init__(self):
         self.retriever = DynamoDBRetriever()
-        
-        # Get API key from parameter or environment variable
-        if api_key is None:
-            api_key = os.environ.get("GOOGLE_API_KEY")
+                
+        load_dotenv()
+        # api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = "AIzaSyCDeL8KKTtSy9XZZLbfszx_WvcNMEWWFqM" 
             
         # Make sure we have an API key
         if not api_key:
@@ -97,6 +101,22 @@ class GeminiDatabaseInsights:
                 'date_range': "Unknown"
             }
         }
+
+    def extract_weather(self, lat, lon, days_ahead=3):
+        """
+        Generate Complete weather based on coordinates from sensor
+        Keep in mind days ahead will linearly increase the context size of the weather
+        """
+        weather_key = "756e5e39fb2941a9acd65155252604"
+        endpoint = f"http://api.weatherapi.com/v1/forecast.json?key={weather_key}&q={lat},{lon}&days={days_ahead}"
+        # Make a request to the weather API
+        response = requests.get(endpoint)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Failed to fetch weather data: {response.status_code}, {response.text}")
+
     
     def generate_data_summary(self, data):
         """Generate a summary of the data for Gemini context"""
@@ -116,7 +136,6 @@ class GeminiDatabaseInsights:
             'locations': set(df['location'].unique()) if 'location' in df.columns else "Unknown"
         }
         
-        # Node-specific statistics
         node_stats = {}
         for node_id in df['nodeId'].unique():
             node_df = df[df['nodeId'] == node_id]
@@ -160,31 +179,119 @@ Node {node_id}:
             data = self.extract_data_for_analysis()
             context = self.generate_data_summary(data)
             full_prompt = f"{context}\n\nBased on the above data: {prompt}"
-        
-        # Send the prompt to Gemini using the client API
+
         response = self.client.models.generate_content(
-            model="gemini-2.0-flash",  # Or your preferred model
+            # model="gemini-2.0-flash",  
+            model="gemini-2.5-flash",
+            contents=full_prompt
+        )
+        
+        return response.text
+    
+    def get_farm_assistant_advice(self, n_readings=5, context=None, weather_data=None):
+        """
+        Generate farming advice using the small_prompt template optimized for smaller models
+        
+        Args:
+            n_readings: Number of recent readings to analyze
+            context: Optional pre-generated context data
+            weather_data: Optional weather forecast data
+        
+        Returns:
+            The generated advice from Gemini
+        """
+        # Get fresh data for context if none provided
+        if not context:
+            data = self.extract_data_for_analysis()
+            context = self.generate_data_summary(data)
+        
+        # Prepare weather data string if provided
+        weather_context = ""
+        if weather_data:
+            weather_context = "\nWeather Forecast:\n"
+            for day in weather_data.get('forecast', {}).get('forecastday', []):
+                date = day.get('date', 'Unknown')
+                max_temp = day.get('day', {}).get('maxtemp_c', 'Unknown')
+                min_temp = day.get('day', {}).get('mintemp_c', 'Unknown')
+                condition = day.get('day', {}).get('condition', {}).get('text', 'Unknown')
+                weather_context += f"- {date}: {min_temp}°C to {max_temp}°C, {condition}\n"
+            
+        # Format the small prompt with the number of readings
+        formatted_prompt = small_prompt.format(n=n_readings)
+        
+        # Combine everything
+        full_prompt = f"{context}\n{weather_context}\n\n{formatted_prompt}"
+        
+        # Query Gemini
+        response = self.client.models.generate_content(
+            model="gemini-2.5-flash",  # Using the faster model for the small prompt
+            contents=full_prompt
+        )
+        
+        return response.text
+    
+    def get_detailed_agriculture_plan(self, context=None, weather_data=None):
+        """
+        Generate a comprehensive agricultural management plan using the large_prompt template
+        
+        Args:
+            context: Optional pre-generated context data
+            weather_data: Optional weather forecast data
+        
+        Returns:
+            The generated detailed plan from Gemini
+        """
+        # Get fresh data for context if none provided
+        if not context:
+            data = self.extract_data_for_analysis()
+            context = self.generate_data_summary(data)
+            
+        # Prepare weather data string if provided
+        weather_context = ""
+        if weather_data:
+            weather_context = "\nWeather Forecast:\n"
+            for day in weather_data.get('forecast', {}).get('forecastday', []):
+                date = day.get('date', 'Unknown')
+                max_temp = day.get('day', {}).get('maxtemp_c', 'Unknown')
+                min_temp = day.get('day', {}).get('mintemp_c', 'Unknown')
+                condition = day.get('day', {}).get('condition', {}).get('text', 'Unknown')
+                weather_context += f"- {date}: {min_temp}°C to {max_temp}°C, {condition}\n"
+        
+        # Format the large prompt with the number of nodes
+        formatted_prompt = large_prompt.format(n=data['summary']['total_nodes'] if 'summary' in data else 'unknown')
+        
+        # Combine everything
+        full_prompt = f"{context}\n{weather_context}\n\n{formatted_prompt}"
+        
+        # Query Gemini with the larger model for more comprehensive results
+        response = self.client.models.generate_content(
+            model="gemini-2.5-flash",  # Can use a more powerful model if available
             contents=full_prompt
         )
         
         return response.text
 
-# Example usage
 if __name__ == "__main__":
-    # Option 1: Pass the API key directly to the constructor
-    API_KEY = "AIzaSyCDeL8KKTtSy9XZZLbfszx_WvcNMEWWFqM"  # Replace with your actual key
-    insights = GeminiDatabaseInsights(api_key=API_KEY)
+    insights = GeminiDatabaseInsights()
     
-    # Extract data
+    # Extract data for analysis
     data = insights.extract_data_for_analysis(days=30)
-    
-    # Generate context
     context = insights.generate_data_summary(data)
     
-    # Query with specific question
+    # Example 1: Get quick advice with the small prompt
+    print("\n=== FARM ASSISTANT ADVICE (SMALL PROMPT) ===\n")
+    quick_advice = insights.get_farm_assistant_advice(n_readings=10, context=context)
+    print(quick_advice)
+    
+    # Example 2: Get detailed plan with the large prompt
+    print("\n=== DETAILED AGRICULTURAL PLAN (LARGE PROMPT) ===\n")
+    detailed_plan = insights.get_detailed_agriculture_plan(context=context)
+    print(detailed_plan)
+    
+    # Original example for backward compatibility
+    print("\n=== CUSTOM QUERY ===\n")
     result = insights.query_gemini(
         "Which node has the highest average temperature and what might be causing it?", 
         context=context
     )
-    
-    print(result)
+    print(result)   
