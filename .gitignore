@@ -35,3 +35,7 @@ yarn-error.log*
 
 */keys
 */venv
+
+# exe startups
+ben_start_backend.sh
+ben_start_frontend.sh
