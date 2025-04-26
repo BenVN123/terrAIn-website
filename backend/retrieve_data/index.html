@@ -1,0 +1,55 @@
+{
+  "description": "API for retrieving sensor data from Dirt Mesh LA network",
+  "endpoints": [
+    {
+      "description": "Get information about all nodes",
+      "method": "GET",
+      "path": "/api/nodes"
+    },
+    {
+      "description": "Get information about a specific node",
+      "method": "GET",
+      "path": "/api/nodes/<node_id>"
+    },
+    {
+      "description": "Get the last n readings for all nodes or specific nodes",
+      "method": "GET",
+      "path": "/api/readings",
+      "query_params": [
+        {
+          "default": 10,
+          "description": "Number of readings to retrieve per node",
+          "name": "n",
+          "type": "integer"
+        },
+        {
+          "description": "Comma-separated list of node IDs",
+          "name": "nodes",
+          "optional": true,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "description": "Health check endpoint",
+      "method": "GET",
+      "path": "/api/health"
+    }
+  ],
+  "name": "Dirt Mesh LA API",
+  "version": "1.0.0",
+  "websockets": [
+    {
+      "description": "All MQTT messages",
+      "event": "mqtt_message"
+    },
+    {
+      "description": "Temperature sensor readings",
+      "event": "sensors_temperature"
+    },
+    {
+      "description": "GNSS position readings",
+      "event": "sensors_gnss"
+    }
+  ]
+}

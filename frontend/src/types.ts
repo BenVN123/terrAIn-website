@@ -76,3 +76,15 @@ export interface GNSSPayload {
   latitude: number;
   timestamp: string;
 }
+
+export interface InsightResponse {
+  insights: string;
+  prompt_type: string;
+  timestamp: string;
+}
+
+export interface ChatMessage {
+  text: string;
+  isUser: boolean;
+  timestamp: string;
+}

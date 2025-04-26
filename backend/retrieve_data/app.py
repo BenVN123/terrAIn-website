@@ -9,7 +9,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from data_retriever import DynamoDBRetriever
 from mqtt_stream import MQTTHandler, DecimalEncoder
-from ai_insights.gemini import GeminiDatabaseInsights
+from gemini import GeminiDatabaseInsights
 
 
 app = Flask(__name__, static_folder='static')
