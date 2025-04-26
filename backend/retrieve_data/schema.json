@@ -1,0 +1,173 @@
+{
+  "database": "AWS DynamoDB",
+  "tables": [
+    {
+      "name": "Nodes",
+      "primaryKey": {
+        "partitionKey": {
+          "name": "nodeId",
+          "type": "String"
+        }
+      },
+      "attributes": [
+        {
+          "name": "nodeId",
+          "type": "String",
+          "description": "Unique identifier for the node"
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "description": "Display name for the node"
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "description": "Description of the node"
+        },
+        {
+          "name": "createdAt",
+          "type": "String",
+          "description": "ISO timestamp when node was created"
+        },
+        {
+          "name": "lastUpdated",
+          "type": "String",
+          "description": "ISO timestamp when node was last updated"
+        }
+      ]
+    },
+    {
+      "name": "Readings",
+      "primaryKey": {
+        "partitionKey": {
+          "name": "nodeId",
+          "type": "String"
+        },
+        "sortKey": {
+          "name": "timestamp",
+          "type": "String"
+        }
+      },
+      "indexes": [
+        {
+          "name": "ReadingIdIndex",
+          "type": "GlobalSecondaryIndex",
+          "partitionKey": {
+            "name": "readingId",
+            "type": "String"
+          }
+        }
+      ],
+      "attributes": [
+        {
+          "name": "nodeId",
+          "type": "String",
+          "description": "Identifier of the node that generated this reading"
+        },
+        {
+          "name": "timestamp",
+          "type": "String",
+          "description": "ISO timestamp when reading was recorded"
+        },
+        {
+          "name": "readingId",
+          "type": "String",
+          "description": "Unique identifier for the reading"
+        },
+        {
+          "name": "temperature",
+          "type": "Decimal",
+          "description": "Temperature reading value"
+        },
+        {
+          "name": "moisture",
+          "type": "Decimal",
+          "description": "Soil moisture reading value"
+        },
+        {
+          "name": "pressure",
+          "type": "Decimal",
+          "description": "Atmospheric pressure reading value"
+        }
+      ]
+    },
+    {
+      "name": "GNSS",
+      "primaryKey": {
+        "partitionKey": {
+          "name": "nodeId",
+          "type": "String"
+        },
+        "sortKey": {
+          "name": "timestamp",
+          "type": "String"
+        }
+      },
+      "indexes": [
+        {
+          "name": "GNSSIdIndex",
+          "type": "GlobalSecondaryIndex",
+          "partitionKey": {
+            "name": "gnssId",
+            "type": "String"
+          }
+        }
+      ],
+      "attributes": [
+        {
+          "name": "gnssId",
+          "type": "String",
+          "description": "Unique identifier for the GNSS record"
+        },
+        {
+          "name": "nodeId",
+          "type": "String",
+          "description": "Identifier of the node"
+        },
+        {
+          "name": "longitude",
+          "type": "Decimal",
+          "description": "Longitude coordinate"
+        },
+        {
+          "name": "latitude",
+          "type": "Decimal",
+          "description": "Latitude coordinate"
+        },
+        {
+          "name": "timestamp",
+          "type": "String",
+          "description": "ISO timestamp when GNSS data was recorded"
+        }
+      ]
+    }
+  ],
+  "dataFlows": [
+    {
+      "name": "SensorDataFlow",
+      "source": "MQTT Topic - soilMesh/test/sensor",
+      "destination": "Readings Table",
+      "processingFunction": "query_sensor",
+      "payload": {
+        "sensor_node": "int",
+        "temperature": "float",
+        "moisture": "float",
+        "pressure": "float",
+        "timestamp": "string (%Y-%m-%d %H:%M:%S)"
+      }
+    },
+    {
+      "name": "GNSSDataFlow",
+      "source": "MQTT Topic - soilMesh/test/gps",
+      "destination": "GNSS Table",
+      "processingFunction": "query_gnss",
+      "payload": {
+        "sensor_node": "int",
+        "longitude": "float",
+        "latitude": "float",
+        "timestamp": "string (%Y-%m-%d %H:%M:%S)"
+      }
+    }
+  ]
+}

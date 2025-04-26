@@ -1,0 +1,5 @@
+# queries to implement
+- [ ] most recent readings for each sensor
+- [ ] entire time series for last n hours/weeks for all sensors for plots
+- [ ] distances for each sensor respectfully(need to apply time filter for noise)
+- [ ] add support for description(optional) of each node, make sure queried optimized
