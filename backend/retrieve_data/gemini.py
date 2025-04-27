@@ -182,7 +182,8 @@ Node {node_id}:
 
         response = self.client.models.generate_content(
             # model="gemini-2.0-flash",  
-            model="gemini-2.5-flash",
+            model="gemini-2.5-pro-preview-03-25",
+            # model="gemini-2.5-flash",
             contents=full_prompt
         )
         
@@ -224,7 +225,9 @@ Node {node_id}:
         
         # Query Gemini
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",  # Using the faster model for the small prompt
+            model="gemini-2.0-flash",
+            
+         #model="gemini-2.5-flash",  # Using the faster model for the small prompt
             contents=full_prompt
         )
         
@@ -265,7 +268,8 @@ Node {node_id}:
         
         # Query Gemini with the larger model for more comprehensive results
         response = self.client.models.generate_content(
-            model="gemini-2.5-flash",  # Can use a more powerful model if available
+            model="gemini-2.0-flash",
+            # model="gemini-2.5-flash",  # Can use a more powerful model if available
             contents=full_prompt
         )
         

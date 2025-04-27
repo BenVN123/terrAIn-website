@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Realtime from './pages/Realtime';
+import Insights from './pages/Insights';
 // ApiExplorer import removed
 
 const App: React.FC = () => {
@@ -14,6 +15,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/realtime" element={<Realtime />} />
+            <Route path="/insights" element={<Insights />} />
             {/* API Explorer route removed */}
           </Routes>
         </main>
