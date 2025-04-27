@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Node, NodeReadings, InsightResponse } from './types';
+import { Node, NodeReadings, InsightResponse, ChatResponse, ChatHistoryResponse } from './types';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
 
@@ -36,9 +36,10 @@ export const getLLMInsights = async (
   promptType: string = 'small',
   nReadings: number = 10,
   customPrompt?: string,
-  includeWeather: boolean = false,
+  includeWeather: boolean = true,
   lat?: number,
-  lon?: number
+  lon?: number,
+  customContext?: string
 ): Promise<InsightResponse> => {
   let url = `/call_llm?prompt_type=${promptType}&n_readings=${nReadings}&include_weather=${includeWeather}`;
   
@@ -46,10 +47,39 @@ export const getLLMInsights = async (
     url += `&custom_prompt=${encodeURIComponent(customPrompt)}`;
   }
   
-  if (includeWeather && lat !== undefined && lon !== undefined) {
+  if (lat !== undefined && lon !== undefined) {
     url += `&lat=${lat}&lon=${lon}`;
   }
   
+  if (customContext) {
+    url += `&custom_context=${encodeURIComponent(customContext)}`;
+  }
+  
   const response = await api.get<InsightResponse>(url);
+  return response.data;
+};
+
+export const createChatSession = async (customContext?: string): Promise<string> => {
+  const response = await api.post<{session_id: string}>('/chat/create_session', {
+    custom_context: customContext
+  });
+  return response.data.session_id;
+};
+
+export const sendChatMessage = async (
+  sessionId: string,
+  message: string,
+  customContext?: string
+): Promise<ChatResponse> => {
+  const response = await api.post<ChatResponse>('/chat/message', {
+    session_id: sessionId,
+    message,
+    custom_context: customContext
+  });
+  return response.data;
+};
+
+export const getChatHistory = async (sessionId: string): Promise<ChatHistoryResponse> => {
+  const response = await api.get<ChatHistoryResponse>(`/chat/history?session_id=${sessionId}`);
   return response.data;
 };

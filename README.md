@@ -1,4 +1,4 @@
-# Dirt Mesh LA
+j Dirt Mesh LA
 
 A sensor network system that collects data from multiple sensors and stores it in AWS DynamoDB, with a visualization dashboard and real-time data streaming.
 
@@ -48,7 +48,7 @@ export AWS_REGION=us-east-1
 ./start_backend.sh
 ```
 
-The API will be available at http://localhost:5000
+The API will be available at http://localhost:5001
 
 3. Start the frontend (in a new terminal):
 
@@ -56,7 +56,7 @@ The API will be available at http://localhost:5000
 ./start_frontend.sh
 ```
 
-The frontend will be available at http://localhost:3000
+The frontend will be available at http://localhost:3002
 
 ### Manual Setup
 

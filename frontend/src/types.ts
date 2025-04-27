@@ -88,3 +88,25 @@ export interface ChatMessage {
   isUser: boolean;
   timestamp: string;
 }
+
+export interface LLMContext {
+  text: string;
+  timestamp: string;
+}
+
+export interface ApiChatMessage {
+  role: string;
+  content: string;
+}
+
+export interface ChatResponse {
+  response: string;
+  session_id: string;
+  timestamp: string;
+}
+
+export interface ChatHistoryResponse {
+  history: ApiChatMessage[];
+  session_id: string;
+  timestamp: string;
+}

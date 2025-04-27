@@ -9,6 +9,7 @@ import pandas as pd
 from google import genai
 from dotenv import load_dotenv
 import requests
+import uuid
 
 from data_retriever import DynamoDBRetriever
 from prompts import small_prompt, large_prompt
@@ -181,13 +182,210 @@ Node {node_id}:
             full_prompt = f"{context}\n\nBased on the above data: {prompt}"
 
         response = self.client.models.generate_content(
-            # model="gemini-2.0-flash",  
-            model="gemini-2.5-pro-preview-03-25",
+            model="gemini-2.0-flash",  
+            # model="gemini-2.5-pro-preview-03-25",
             # model="gemini-2.5-flash",
             contents=full_prompt
         )
         
         return response.text
+
+
+class AgriculturalChatConversation:
+    def __init__(self, api_key=None):
+        load_dotenv()
+        self.api_key = api_key or "AIzaSyCDeL8KKTtSy9XZZLbfszx_WvcNMEWWFqM"
+        self.client = genai.Client(api_key=self.api_key)
+        
+        # Dictionary to store conversations by session_id
+        self.conversations = {}
+        
+        # Initialize Gemini insights for sensor data access
+        self.gemini_insights = GeminiDatabaseInsights()
+        
+    def _get_conversation(self, session_id):
+        """Get an existing conversation or create a new one."""
+        if session_id not in self.conversations:
+            # Initialize a new conversation
+            self.conversations[session_id] = {
+                "messages": [],
+                "context": None,
+                "created_at": datetime.now().isoformat()
+            }
+            
+            # Get initial farm data for context
+            data = self.gemini_insights.extract_data_for_analysis()
+            context = self.gemini_insights.generate_data_summary(data)
+            
+            # Add system prompt with context
+            system_message = f"""You are an agricultural advisory AI for a smart farm.
+            You have access to sensor data from the farm, which includes temperature, moisture, and other metrics.
+            Here's the current data summary:
+
+            {context}
+
+            Respond to user queries about their farm data, providing specific advice based on the data.
+            Keep your answers concise, relevant, and actionable. If you don't know something, say so.
+            Remember previous parts of the conversation to provide consistent and relevant responses."""
+
+            self.conversations[session_id]["messages"].append({
+                "role": "system",
+                "content": system_message
+            })
+            
+            self.conversations[session_id]["context"] = context
+            
+        return self.conversations[session_id]
+        
+    def add_message(self, session_id, message, role="user"):
+        """Add a message to the conversation."""
+        conversation = self._get_conversation(session_id)
+        conversation["messages"].append({
+            "role": role,
+            "content": message
+        })
+        return conversation
+        
+    def get_conversation_history(self, session_id):
+        """Get the full conversation history."""
+        conversation = self._get_conversation(session_id)
+        return conversation["messages"]
+        
+    def clear_conversation(self, session_id):
+        """Clear a conversation."""
+        if session_id in self.conversations:
+            del self.conversations[session_id]
+            
+    def generate_response(self, session_id, message, custom_context=None):
+        """Generate a response to the user's message."""
+        # Add the user message
+        conversation = self.add_message(session_id, message)
+        
+        # Update context if custom context provided
+        if custom_context:
+            # Get fresh data for merging with custom context
+            data = self.gemini_insights.extract_data_for_analysis()
+            base_context = self.gemini_insights.generate_data_summary(data)
+            
+            # Merge contexts
+            full_context = f"{base_context}\n\nAdditional User-Provided Context:\n{custom_context}"
+            
+            # Update system message with new context
+            for msg in conversation["messages"]:
+                if msg["role"] == "system":
+                    msg["content"] = f"""You are an agricultural advisory AI for a smart farm.
+                    You have access to sensor data from the farm, which includes temperature, moisture, and other metrics.
+                    Here's the current data summary:
+
+                    {full_context}
+
+                    Respond to user queries about their farm data, providing specific advice based on the data.
+                    Keep your answers concise, relevant, and actionable. If you don't know something, say so.
+                    Remember previous parts of the conversation to provide consistent and relevant responses."""
+                    break
+        try:
+            # Get weather data for additional context
+            weather_data = None
+            try:
+                lat, lon = 34.0522, -118.2437  # Los Angeles coordinates as default
+                weather_data = self.gemini_insights.extract_weather(lat, lon)
+                
+                # Add weather as context message
+                weather_context = "Weather Forecast:\n"
+                for day in weather_data.get('forecast', {}).get('forecastday', []):
+                    date = day.get('date', 'Unknown')
+                    max_temp = day.get('day', {}).get('maxtemp_c', 'Unknown')
+                    min_temp = day.get('day', {}).get('mintemp_c', 'Unknown')
+                    condition = day.get('day', {}).get('condition', {}).get('text', 'Unknown')
+                    weather_context += f"- {date}: {min_temp}°C to {max_temp}°C, {condition}\n"
+                
+                self.add_message(session_id, f"For context, here's the current weather forecast:\n{weather_context}", "system")
+            except Exception as e:
+                # Continue without weather data if it fails
+                print(f"Failed to fetch weather data: {str(e)}")
+            
+            # Convert conversation to format for Gemini Content API
+            conversation_history = []
+            system_prompt = ""
+            
+            # Extract system prompt and build conversation history
+            for msg in conversation["messages"]:
+                if msg["role"] == "system":
+                    system_prompt = msg["content"]
+                else:
+                    conversation_history.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+                    
+            # Extract just the last user message
+            last_user_message = message
+            
+            # Generate response with the Content Generation API
+            # Construct the full prompt
+            full_prompt = f"""
+{system_prompt}
+
+Previous conversation:
+{json.dumps(conversation_history, indent=2)}
+
+User question: {last_user_message}
+
+Your response:"""
+
+            # Using the basic content generation instead of chat API
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash-thinking-exp-01-21",
+                # model="gemini-2.5-pro-preview-03-25",
+                # model="gemini-2.0-flash",
+                contents=full_prompt
+            )
+            
+            # Get the response text from the generated content
+            response_text = response.text if hasattr(response, 'text') else response.candidates[0].content.parts[0].text
+            
+            # Add the response to the conversation
+            self.add_message(session_id, response_text, "model")
+            
+            return response_text
+            
+        except Exception as e:
+            error_response = f"I encountered an error processing your request: {str(e)}"
+            self.add_message(session_id, error_response, "model")
+            return error_response
+    
+    def create_session(self, custom_context=None):
+        """Create a new conversation session."""
+        session_id = str(uuid.uuid4())
+        self._get_conversation(session_id)
+        
+        # If custom context is provided, update the system message
+        if custom_context:
+            conversation = self.conversations[session_id]
+            
+            # Update the first system message
+            for i, msg in enumerate(conversation["messages"]):
+                if msg["role"] == "system":
+                    # Get fresh data for context
+                    data = self.gemini_insights.extract_data_for_analysis()
+                    base_context = self.gemini_insights.generate_data_summary(data)
+                    
+                    # Merge contexts
+                    full_context = f"{base_context}\n\nAdditional User-Provided Context:\n{custom_context}"
+                    
+                    # Update system message
+                    conversation["messages"][i]["content"] = f"""You are an agricultural advisory AI for a smart farm.
+You have access to sensor data from the farm, which includes temperature, moisture, and other metrics.
+Here's the current data summary:
+
+{full_context}
+
+Respond to user queries about their farm data, providing specific advice based on the data.
+Keep your answers concise, relevant, and actionable. If you don't know something, say so.
+Remember previous parts of the conversation to provide consistent and relevant responses."""
+                    break
+                    
+        return session_id
     
     def get_farm_assistant_advice(self, n_readings=5, context=None, weather_data=None):
         """

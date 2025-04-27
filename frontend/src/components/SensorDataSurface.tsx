@@ -1,11 +1,11 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Text } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { MQTTMessage, GNSSPayload, TemperaturePayload } from '../types';
-import { hashIdToColor, gaussianRBF, euclidean, computeRBFInterpolator } from '../lib/utils';
-import { Color, BufferGeometry, Float32BufferAttribute, MeshBasicMaterial } from 'three';
+import { hashIdToColor, computeRBFInterpolator } from '../lib/utils';
+import { Color, BufferGeometry, Float32BufferAttribute } from 'three';
 
 interface SensorDataSurfaceProps {
   gnssData: MQTTMessage[];
@@ -41,25 +41,28 @@ const DataPoints: React.FC<{ points: SensorPoint[] }> = ({ points }) => {
 };
 
 const RBFGrid: React.FC<{ sensorPoints: SensorPoint[]; gridSize?: number }> = ({ sensorPoints, gridSize = 1 }) => {
-  // Check if we have enough points for interpolation
-  if (sensorPoints.length < 2) {
-    return null;
-  }
-  
+  // Extract points and values before any conditional returns
   const points: [number, number][] = sensorPoints.map(({ x, y }) => [x, y]);
   const values = sensorPoints.map(({ z }) => z);
 
+  // Always call useMemo regardless of conditions
   const rbfInterpolator = useMemo(() => {
     try {
+      // Only compute if we have enough points
+      if (sensorPoints.length < 2) {
+        return null;
+      }
       return computeRBFInterpolator(points, values);
     } catch (error) {
       console.error("Failed to compute RBF interpolator:", error);
       return null;
     }
-  }, [points, values]);
+  }, [points, values, sensorPoints.length]);
   
-  // If interpolation failed, don't render anything
-  if (!rbfInterpolator) return null;
+  // Early returns after the hooks have been called
+  if (sensorPoints.length < 2 || !rbfInterpolator) {
+    return null;
+  }
 
   const xMin = Math.floor(Math.min(...sensorPoints.map(p => p.x)));
   const xMax = Math.ceil(Math.max(...sensorPoints.map(p => p.x)));
